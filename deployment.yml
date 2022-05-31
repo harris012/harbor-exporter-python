@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exporter
+  namespace: <YOUR-NAMESPACE> #  edit me
+  labels:
+    app: exporter
+    app.kubernetes.io/name: exporter
+    app.kubernetes.io/version: "{{.Values.addons.generic_exporter.version }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: exporter
+  labels:
+    app: exporter
+    app.kubernetes.io/name: exporter
+    app.kubernetes.io/version: "{{.Values.addons.exporter.version }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: exporter
+subjects:
+- kind: ServiceAccount
+  name: exporter
+  namespace: <YOUR-NAMESPACE> #  edit me
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: exporter
+  labels:
+    app: exporter
+    app.kubernetes.io/name: exporter
+    app.kubernetes.io/version: "{{.Values.addons.exporter.version }}"
+rules:
+- apiGroups:
+  - crd.projectcalico.org
+  resources:
+  - ipamhandles
+  - ipamblocks
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exporter
+  namespace: <YOUR-NAMESPACE> #  edit me
+  labels:
+    app: exporter
+    app.kubernetes.io/name: exporter
+    app.kubernetes.io/version: "{{.Values.addons.exporter.version }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: exporter
+  template:
+    metadata:
+      name: exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        checksum/config: {{ ($.Files.Glob "scripts/*.py").AsConfig | sha256sum }}
+      labels:
+        app: exporter
+        app.kubernetes.io/name: exporter
+        app.kubernetes.io/version: "{{ .Values.addons.exporter.version }}"
+    spec:
+      priorityClassName: "cluster-support"
+      serviceAccountName: exporter
+      containers:
+        - name: exporter
+          image: {{ .Values.image_registry }}/kai/cps/python-k8s:{{ .Values.addons.exporter.version }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 500Mi
+              cpu: 50m
+              ephemeral-storage: 50Mi
+            limits:
+              memory: 500Mi
+              cpu: 500m
+              ephemeral-storage: 50Mi
+          args:
+            - /usr/local/bin/exporter.py
+            - --in-cluster
+            - --gitlab-url={{ .Values.gitlab_url }}
+          ports:
+            - containerPort: 9100
+              name: metrics-http
+          volumeMounts:
+          - name: exporter-config-volume
+            mountPath: /usr/local/bin/
+          env:
+            - name: ANNOTATION_DOMAIN
+              value: {{ .Values.global.annotation_domain | quote }}
+      volumes:
+      - name: config-volume
+        configMap:
+          name: config
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config
+  namespace: <YOUR-NAMESPACE> #  edit me
+data:
+{{ ($.Files.Glob "scripts/*.py").AsConfig | indent 4 }}
