@@ -7,7 +7,7 @@ metadata:
   labels:
     app: exporter
     app.kubernetes.io/name: exporter
-    app.kubernetes.io/version: "{{.Values.addons.generic_exporter.version }}"
+    app.kubernetes.io/version: "{{.Values.addons.exporter.version }}"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

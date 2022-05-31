@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Create metrics for generic metrics based on k8s apiserver or prometheus data
+# Create metrics for exporter metrics based on k8s apiserver or prometheus data
 # currently exports:
 #    calico_ipip_tunnel_handles_total
 
@@ -19,7 +19,7 @@ from collections import defaultdict
 
 GITLAB_URL = "WILL NOT TELL YOU" # edit me
 
-EXPORTER_ERROR = "generic_exporter_errors_total"
+EXPORTER_ERROR = "exporter_errors_total"
 CALICO_IPIP_TUNNEL_HANDLES = "calico_ipip_tunnel_handles_total"
 CALICO_IPAM_BLOCKS = "calico_ipam_blocks_total"
 CALICO_NODE_IPAM_BLOCK_ROUTES = "calico_node_ipam_block_routes_total"
@@ -266,7 +266,7 @@ def get_dns_metrics():
 def main():
     import argparse
     parser = argparse.ArgumentParser(
-        description='Collect generic metrics',
+        description='Collect exporter metrics',
     )
     parser.add_argument('--in-cluster',
                         const=True, action='store_const', default=False,
