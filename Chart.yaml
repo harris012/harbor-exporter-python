@@ -1,0 +1,4 @@
+apiVersion: v1
+name: exporter
+description: A Helm chart for deploying the exporter
+version: 1.0.0
