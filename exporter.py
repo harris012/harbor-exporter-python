@@ -170,7 +170,6 @@ def main():
         IMAGE_MISSING:
         Gauge(IMAGE_MISSING, 'Container image is missing from registry', [
             "tenant", "namespace", "registry", "project", "image", "tag",
-            "vulnerabilities", "critical", "high", "fixable", "total",
             "internal"
         ]),
         IMAGE_AGE_RETRIEVAL_ERROR:

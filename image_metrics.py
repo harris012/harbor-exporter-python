@@ -71,7 +71,6 @@ def get_image_metrics(client, registry):
             if last_modified_time is None:
                 metric_id = (IMAGE_MISSING,
                              (tenant, namespace, registry, project, image, tag,
-                              vulnerabilities, critical, high, fixable, total,
                               str(is_image_internal).lower()))
                 metrics[metric_id] = 1
                 continue
@@ -226,7 +225,7 @@ def get_image_details(image_path, registry):
         registry, image_path = image_path.split("/", 1)
 
     # take care of situations like haproxy:latest
-    if (len(image_path.split('/')) == 1):
+    if len(image_path.split('/')) == 1:
         image_path = 'library/' + image_path
 
     project = image_path.split('/', 1)[0]
