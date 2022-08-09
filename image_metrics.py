@@ -56,11 +56,15 @@ def get_image_metrics(client, registry):
         namespace = pod.metadata.namespace
         tenant = namespace_to_tenant_mapping.get(namespace, 'system')
 
+        metric_details = tenant, namespace, registry, project, image, tag,
+                          severity, critical, high, fixable, total,
+                          str(is_image_internal).lower()
+
         for container in iter_containers(pod):
             registry, project, image, tag, is_image_internal = \
                 get_image_details(container.image, registry)
 
-            last_modified_time, vulnerabilities, critical, high, fixable, total = get_last_modified_timestamp(
+            last_modified_time, severity, critical, high, fixable, total = get_last_modified_timestamp(
                 project, image, tag, registry)
 
             logging.getLogger().debug(
@@ -70,22 +74,17 @@ def get_image_metrics(client, registry):
 
             if last_modified_time is None:
                 metric_id = (IMAGE_MISSING,
-                             (tenant, namespace, registry, project, image, tag,
-                              str(is_image_internal).lower()))
+                             metric_details)
                 metrics[metric_id] = 1
                 continue
             elif last_modified_time == 0:
                 metric_id = (IMAGE_AGE_RETRIEVAL_ERROR,
-                             (tenant, namespace, registry, project, image, tag,
-                              vulnerabilities, critical, high, fixable, total,
-                              str(is_image_internal).lower()))
+                             metric_details)
                 metrics[metric_id] = 1
                 continue
 
             metric_id = (IMAGE_LAST_MODIFIED_TIMESTAMP,
-                         (tenant, namespace, registry, project, image, tag,
-                          vulnerabilities, critical, high, fixable, total,
-                          str(is_image_internal).lower()))
+                          metric_details)
             metrics[metric_id] = last_modified_time
 
     logging.getLogger().info("Preparing image metrics took %s",
@@ -174,8 +173,8 @@ def get_last_modified_timestamp(project, image, tag, registry):
                         response.read())
         scan_overview = data['scan_overview'][
             'application/vnd.scanner.adapter.vuln.report.harbor+json; version=1.0']
-        vulnerabilities = scan_overview['severity']
-        if vulnerabilities != "Unknown":
+        severity = scan_overview['severity']
+        if severity != "Unknown":
             scan_summary = scan_overview['summary'].get('summary')
             critical = scan_summary.get('Critical')
             high = scan_summary.get('High')
@@ -184,7 +183,7 @@ def get_last_modified_timestamp(project, image, tag, registry):
         else:
             critical = high = fixable = total = None
         return dateutil.parser.parse(data['extra_attrs']['created']).timestamp(
-        ), vulnerabilities, critical, high, fixable, total
+        ), severity, critical, high, fixable, total
 
 
 def iter_containers(pod):
