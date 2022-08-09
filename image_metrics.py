@@ -57,7 +57,6 @@ def get_image_metrics(client, registry):
         tenant = namespace_to_tenant_mapping.get(namespace, 'system')
 
         metric_details = tenant, namespace, registry, project, image, tag,
-                          severity, critical, high, fixable, total,
                           str(is_image_internal).lower()
 
         for container in iter_containers(pod):
