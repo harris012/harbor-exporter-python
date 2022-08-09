@@ -19,8 +19,9 @@ CALICO_IPIP_TUNNEL_HANDLES = "calico_ipip_tunnel_handles_total"
 CALICO_IPAM_BLOCKS = "calico_ipam_blocks_total"
 CALICO_NODE_IPAM_BLOCK_ROUTES = "calico_node_ipam_block_routes_total"
 MISSING_DEPLOYMENT = "missing_deployment"
-METRIC_DETAILS = "tenant", "namespace", "registry", "project", "image", "tag",
-                  "internal"
+METRIC_DETAILS = "tenant", "namespace", "registry", "project", "image", "tag", "internal"
+
+
 def get_head_commit_ids(gitlab_url, project, branch):
     project = urllib.parse.quote_plus(project)
     branch = urllib.parse.quote_plus(branch)

@@ -56,8 +56,7 @@ def get_image_metrics(client, registry):
         namespace = pod.metadata.namespace
         tenant = namespace_to_tenant_mapping.get(namespace, 'system')
 
-        metric_details = tenant, namespace, registry, project, image, tag,
-                          str(is_image_internal).lower()
+        metric_details = tenant, namespace, registry, project, image, tag, str(is_image_internal).lower()
 
         for container in iter_containers(pod):
             registry, project, image, tag, is_image_internal = \
