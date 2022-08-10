@@ -163,9 +163,11 @@ def main():
               ["repository"]),
         IMAGE_LAST_MODIFIED_TIMESTAMP:
         Gauge(IMAGE_LAST_MODIFIED_TIMESTAMP,
-              'Timestamp of last modification of a container image', METRIC_DETAILS),
+              'Timestamp of last modification of a container image',
+              METRIC_DETAILS),
         IMAGE_MISSING:
-        Gauge(IMAGE_MISSING, 'Container image is missing from registry', METRIC_DETAILS),
+        Gauge(IMAGE_MISSING, 'Container image is missing from registry',
+              METRIC_DETAILS),
         IMAGE_AGE_RETRIEVAL_ERROR:
         Gauge(IMAGE_AGE_RETRIEVAL_ERROR,
               'Container image age could not be discovered', METRIC_DETAILS),
