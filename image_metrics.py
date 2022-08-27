@@ -2,17 +2,24 @@
 Functions related to obtaining the timestamp of images.
 """
 
-import logging
-import urllib.parse
-import dateutil.parser
 import time
 import json
+import logging
+import urllib.parse
+import urllib.error
+import urllib.request
+import dateutil.parser
+
 from collections import defaultdict
 from cachetools.func import ttl_cache
 
 IMAGE_LAST_MODIFIED_TIMESTAMP = "image_last_modified_timestamp"
 IMAGE_AGE_RETRIEVAL_ERROR = "image_age_retrieval_error"
 IMAGE_MISSING = "image_missing"
+IMAGE_VULNERABILITIES_CRITICAL = "image_vulnerabilities_critical"
+IMAGE_VULNERABILITIES_HIGH = "image_vulnerabilities_high"
+IMAGE_VULNERABILITIES_FIXABLE = "image_vulnerabilities_fixable"
+IMAGE_VULNERABILITIES_TOTAL = "image_vulnerabilities_total"
 
 
 def iter_chunked(function, chunksize=500, **kwargs):
@@ -56,33 +63,43 @@ def get_image_metrics(client, registry):
         namespace = pod.metadata.namespace
         tenant = namespace_to_tenant_mapping.get(namespace, 'system')
 
-        metric_details = tenant, namespace, registry, project, image, tag, str(
-            is_image_internal).lower()
-
         for container in iter_containers(pod):
             registry, project, image, tag, is_image_internal = \
                 get_image_details(container.image, registry)
 
-            last_modified_time, severity, critical, high, fixable, total = get_last_modified_timestamp(
+            last_modified_time, critical_vuln, high_vuln, fixable_vuln, total_vuln = get_image_information(
                 project, image, tag, registry)
 
+            metric_labels = tenant, namespace, registry, project, image, tag, str(
+                is_image_internal).lower()
             logging.getLogger().debug(
                 'total details are follows tenant: %s, namespace: %s, registry: %s, project: %s, image_name: %s, tag: %s and time: %s',
                 tenant, namespace, registry, project, image, tag,
                 last_modified_time)
 
             if last_modified_time is None:
-                metric_id = (IMAGE_MISSING, metric_details)
+                metric_id = (IMAGE_MISSING, metric_labels)
                 metrics[metric_id] = 1
                 continue
             elif last_modified_time == 0:
-                metric_id = (IMAGE_AGE_RETRIEVAL_ERROR, metric_details)
+                metric_id = (IMAGE_AGE_RETRIEVAL_ERROR, metric_labels)
                 metrics[metric_id] = 1
                 continue
-
-            metric_id = (IMAGE_LAST_MODIFIED_TIMESTAMP, metric_details)
+            metric_id = (IMAGE_LAST_MODIFIED_TIMESTAMP, metric_labels)
             metrics[metric_id] = last_modified_time
 
+            if total_vuln is not None:
+                metric_id = (IMAGE_VULNERABILITIES_TOTAL, metric_labels)
+                metrics[metric_id] = float(total_vuln)
+            if critical_vuln is not None:
+                metric_id = (IMAGE_VULNERABILITIES_CRITICAL, metric_labels)
+                metrics[metric_id] = float(critical_vuln)
+            if high_vuln is not None:
+                metric_id = (IMAGE_VULNERABILITIES_HIGH, metric_labels)
+                metrics[metric_id] = float(high_vuln)
+            if fixable_vuln is not None:
+                metric_id = (IMAGE_VULNERABILITIES_FIXABLE, metric_labels)
+                metrics[metric_id] = float(fixable_vuln)
     logging.getLogger().info("Preparing image metrics took %s",
                              time.time() - start_time)
 
@@ -124,7 +141,7 @@ def get_namespace_to_tenant_mapping(client, default_tenant='system'):
 
 # GET /projects/{project_name}/repositories/{repository_name}/artifacts
 @ttl_cache(ttl=3600)
-def get_last_modified_timestamp(project, image, tag, registry):
+def get_image_information(project, image, tag, registry):
     """Retrieve image timestamp from harbor registry and return timestamp
     If an HTTP error code (e.g. 404) is returned, return None.
 
@@ -138,11 +155,23 @@ def get_last_modified_timestamp(project, image, tag, registry):
     tag : str
         The tag
 
+    registry : str
+        The registry link
+
     Returns
     -------
     int
         UNIX timestamp or
         0 if the image exist but date could not be established
+    int
+        critical_vuln
+    int
+        high_vuln
+    int
+        fixable_vuln
+    int
+        total_vuln
+
     """
 
     log = logging.getLogger()
@@ -159,7 +188,7 @@ def get_last_modified_timestamp(project, image, tag, registry):
     try:
         response = urllib.request.urlopen(path)
     except urllib.error.HTTPError:
-        return None
+        return [None] * 5
     else:
         data = dict()
         try:
@@ -167,20 +196,22 @@ def get_last_modified_timestamp(project, image, tag, registry):
         except Exception:
             log.warning("Failed to decode json from registry response: %s",
                         response.read())
+        if 'scan_overview' not in data:
+            return [None] * 5
         scan_overview = data['scan_overview'][
             'application/vnd.scanner.adapter.vuln.report.harbor+json; version=1.0']
-        severity = scan_overview['severity']
-        if severity != "Unknown":
+
+        if scan_overview['scan_status'] != 'Error' and scan_overview[
+                'severity'] != 'Unknown':
             scan_summary = scan_overview['summary'].get('summary')
-            critical = scan_summary.get('Critical')
-            high = scan_summary.get('High')
-            total = scan_overview['summary'].get('total')
-            fixable = scan_overview['summary'].get('fixable')
+            critical_vuln = scan_summary.get('Critical')
+            high_vuln = scan_summary.get('High')
+            total_vuln = scan_overview['summary'].get('total')
+            fixable_vuln = scan_overview['summary'].get('fixable')
         else:
-            critical = high = fixable = total = None
-        return dateutil.parser.parse(
-            data['extra_attrs']
-            ['created']).timestamp(), severity, critical, high, fixable, total
+            critical_vuln = high_vuln = fixable_vuln = total_vuln = None
+        return dateutil.parser.parse(data['extra_attrs']['created']).timestamp(
+        ), critical_vuln, high_vuln, fixable_vuln, total_vuln
 
 
 def iter_containers(pod):
