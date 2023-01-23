@@ -2,6 +2,7 @@
 
 ## Prerequsits 
 - A kubernetes cluster with prometheus instance.
+- A harbor registry.
 
 ### TODOS
 - [x] Find a sloutions to compare the Running Docker images in the cluster with harbor registry.
