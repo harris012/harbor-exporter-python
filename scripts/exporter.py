@@ -9,7 +9,7 @@ import time
 import json
 import logging
 import os
-from docker_image_metrics import get_image_metrics, IMAGE_MISSING, \
+from scripts.docker_image_metrics import get_image_metrics, IMAGE_MISSING, \
     IMAGE_LAST_MODIFIED_TIMESTAMP, IMAGE_AGE_RETRIEVAL_ERROR
 from cachetools.func import ttl_cache
 from collections import defaultdict

@@ -199,7 +199,7 @@ def get_image_information(project, image, tag, registry):
         if 'scan_overview' not in data:
             return [None] * 5
         scan_overview = data['scan_overview'][
-            'application/vnd.scanner.adapter.vuln.report.harbor+json; version=1.0']
+            'application/vnd.security.vulnerability.report; version=1.1']
 
         if scan_overview['scan_status'] != 'Error' and scan_overview[
                 'severity'] != 'Unknown':
