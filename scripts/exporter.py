@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Create metrics for generic metrics based on k8s apiserver
+# Create metrics based on k8s apiserver
 
 import kubernetes as k8s
 from prometheus_client import start_http_server, Gauge, Counter
@@ -14,100 +14,14 @@ from scripts.docker_image_metrics import get_image_metrics, IMAGE_MISSING, \
 from cachetools.func import ttl_cache
 from collections import defaultdict
 
-EXPORTER_ERROR = "generic_exporter_errors_total"
-CALICO_IPIP_TUNNEL_HANDLES = "calico_ipip_tunnel_handles_total"
-CALICO_IPAM_BLOCKS = "calico_ipam_blocks_total"
-CALICO_NODE_IPAM_BLOCK_ROUTES = "calico_node_ipam_block_routes_total"
-MISSING_DEPLOYMENT = "missing_deployment"
+EXPORTER_ERROR = "exporter_errors_total"
 METRIC_DETAILS = "tenant", "namespace", "registry", "project", "image", "tag", "internal"
 
-
-def get_head_commit_ids(gitlab_url, project, branch):
-    project = urllib.parse.quote_plus(project)
-    branch = urllib.parse.quote_plus(branch)
-    url = "{}/api/v4/projects/{}/repository/branches/{}".format(
-        gitlab_url, project, branch)
-    with urllib.request.urlopen(url) as req:
-        data = json.loads(req.read().decode("UTF-8"))
-    return data["commit"]["id"]
-
-
-@ttl_cache(maxsize=4, ttl=600)
-def get_namespace_deployment_metrics(gitlab_url):
-    repo_commit_id = get_head_commit_ids(gitlab_url,
-                                         "acc/kubernetes-namespaces", "master")
-    meta_cm = client.read_namespaced_config_map(namespace="kube-system",
-                                                name="gitref-app-namespaces")
-    deployed_commit_id = meta_cm.data["commitId"]
-    log.debug("Deployed %s, Gitlab %s", deployed_commit_id, repo_commit_id)
-
-    metrics = dict()
-    metric_id = (MISSING_DEPLOYMENT, ("acc/kubernetes-namespaces", ))
-    metrics[metric_id] = 0 if deployed_commit_id == repo_commit_id else 1
-    return metrics
-
-
-@ttl_cache(maxsize=4, ttl=1200)
-def get_addon_deployment_metrics(gitlab_url):
-    meta_cm = client.read_namespaced_config_map(namespace="kube-system",
-                                                name="gitref-addons")
-    # only alert in sandbox
-    deploy_branch = meta_cm.data["deployBranch"]
-    # only handle master branch deployments as staged branches remain
-    # undeployed for more than a day
-    if deploy_branch != "master":
-        return dict()
-
-    repo_commit_id = get_head_commit_ids(gitlab_url, "acc/kubernetes-cluster",
-                                         deploy_branch)
-
-    deployed_commit_id = meta_cm.data["commitId"]
-    log.debug("Deployed %s, Gitlab %s", deployed_commit_id, repo_commit_id)
-
-    metrics = dict()
-    metric_id = (MISSING_DEPLOYMENT, ("acc/kubernetes-cluster", ))
-    metrics[metric_id] = 0 if deployed_commit_id == repo_commit_id else 1
-    return metrics
-
-
-@ttl_cache(maxsize=4, ttl=60)
-def get_calico_metrics():
-    metrics = defaultdict(float)
-    ipamhandles = custom_client.list_cluster_custom_object(
-        group="crd.projectcalico.org", version="v1",
-        plural="ipamhandles")["items"]
-    n_tunnels = len([
-        handle for handle in ipamhandles
-        if handle["metadata"]["name"].startswith("ipip-tunnel-addr")
-    ])
-
-    metric_id = (CALICO_IPIP_TUNNEL_HANDLES, None)
-    metrics[metric_id] = n_tunnels
-
-    ipamblocks = custom_client.list_cluster_custom_object(
-        group="crd.projectcalico.org", version="v1",
-        plural="ipamblocks")["items"]
-    nodes = client.list_node().items
-
-    for block in ipamblocks:
-        # host:kmaster-fe-sandbox-iz1-bs003
-        ipam_node = block["spec"]["affinity"].split(":")[1]
-        metric_id = (CALICO_IPAM_BLOCKS, (ipam_node, ))
-        metrics[metric_id] += 1
-
-        for node in nodes:
-            # blocks on the same node do not need routes
-            if node.metadata.name == ipam_node:
-                continue
-            metric_id = (CALICO_NODE_IPAM_BLOCK_ROUTES, (node.metadata.name, ))
-            metrics[metric_id] += 1
-
-    return metrics
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Collect generic metrics', )
+    parser = argparse.ArgumentParser(description='metrics', )
     parser.add_argument('--in-cluster',
                         const=True,
                         action='store_const',
@@ -126,7 +40,7 @@ def main():
                         type=int)
     parser.add_argument('--registry',
                         help='registry url',
-                        default="registry-lab.1und1.cloud")
+                        default="harbor.com")
     args = parser.parse_args()
 
     if args.in_cluster:
@@ -150,17 +64,6 @@ def main():
     metric_objects = {
         EXPORTER_ERROR:
         Counter(EXPORTER_ERROR, '', ["collector"]),
-        CALICO_IPIP_TUNNEL_HANDLES:
-        Gauge(CALICO_IPIP_TUNNEL_HANDLES, '', []),
-        CALICO_IPAM_BLOCKS:
-        Gauge(CALICO_IPAM_BLOCKS, '', ["node"]),
-        CALICO_NODE_IPAM_BLOCK_ROUTES:
-        Gauge(CALICO_NODE_IPAM_BLOCK_ROUTES,
-              'Number of ipam blocks for which routes must exist', ["node"]),
-        MISSING_DEPLOYMENT:
-        Gauge(MISSING_DEPLOYMENT,
-              'Deployed commit id matches repository commit id',
-              ["repository"]),
         IMAGE_LAST_MODIFIED_TIMESTAMP:
         Gauge(IMAGE_LAST_MODIFIED_TIMESTAMP,
               'Timestamp of last modification of a container image',
@@ -175,26 +78,6 @@ def main():
 
     while True:
         metrics = dict()
-        try:
-            metrics.update(get_calico_metrics())
-        except Exception:
-            log.exception("calico metric fetch failed")
-            metric_objects[EXPORTER_ERROR].labels("calico_metrics").inc()
-
-        try:
-            metrics.update(
-                get_namespace_deployment_metrics(gitlab_url=args.gitlab_url))
-        except Exception:
-            log.exception("namespace deployment metric fetch failed")
-            metric_objects[EXPORTER_ERROR].labels("namespace_deployment").inc()
-
-        try:
-            metrics.update(
-                get_addon_deployment_metrics(gitlab_url=args.gitlab_url))
-        except Exception:
-            log.exception("addon deployment metric fetch failed")
-            metric_objects[EXPORTER_ERROR].labels("addon_deployment").inc()
-
         try:
             metrics.update(get_image_metrics(client, registry=args.registry))
         except Exception:

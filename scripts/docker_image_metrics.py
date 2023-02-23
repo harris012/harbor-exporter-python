@@ -21,6 +21,11 @@ IMAGE_VULNERABILITIES_HIGH = "image_vulnerabilities_high"
 IMAGE_VULNERABILITIES_FIXABLE = "image_vulnerabilities_fixable"
 IMAGE_VULNERABILITIES_TOTAL = "image_vulnerabilities_total"
 
+# API in harbor < v2.6
+IMAGE_VULN_REPORT_KEY_OLD = 'application/vnd.scanner.adapter.vuln.report.harbor+json; version=1.0'
+# API in harbor >= v2.6
+IMAGE_VULN_REPORT_KEY_NEW = 'application/vnd.security.vulnerability.report; version=1.1'
+
 
 def iter_chunked(function, chunksize=500, **kwargs):
     pods = function(
@@ -198,16 +203,22 @@ def get_image_information(project, image, tag, registry):
                         response.read())
         if 'scan_overview' not in data:
             return [None] * 5
-        scan_overview = data['scan_overview'][
-            'application/vnd.security.vulnerability.report; version=1.1']
 
-        if scan_overview['scan_status'] != 'Error' and scan_overview[
+        scan_overview = data['scan_overview']
+
+        # support for new harbor version
+        if IMAGE_VULN_REPORT_KEY_NEW in scan_overview:
+            vuln_report = scan_overview[IMAGE_VULN_REPORT_KEY_NEW]
+        else:
+            vuln_report = scan_overview[IMAGE_VULN_REPORT_KEY_OLD]
+
+        if vuln_report['scan_status'] != 'Error' and vuln_report[
                 'severity'] != 'Unknown':
-            scan_summary = scan_overview['summary'].get('summary')
+            scan_summary = vuln_report['summary'].get('summary')
             critical_vuln = scan_summary.get('Critical')
             high_vuln = scan_summary.get('High')
-            total_vuln = scan_overview['summary'].get('total')
-            fixable_vuln = scan_overview['summary'].get('fixable')
+            total_vuln = vuln_report['summary'].get('total')
+            fixable_vuln = vuln_report['summary'].get('fixable')
         else:
             critical_vuln = high_vuln = fixable_vuln = total_vuln = None
         return dateutil.parser.parse(data['extra_attrs']['created']).timestamp(
